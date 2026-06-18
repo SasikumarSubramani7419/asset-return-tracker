@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Asset Return Tracker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3347;
+    --accent: #4f8ef7;
+    --accent2: #7c5cf6;
+    --green: #22c55e;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --orange: #f97316;
+    --text: #e8eaf0;
+    --muted: #7a82a0;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .header-right { display: flex; gap: 10px; align-items: center; }
+  .notif-status { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .notif-status.enabled { border-color: var(--green); color: var(--green); background: rgba(34,197,94,0.08); }
+
+  /* STATS */
+  .stats-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 16px 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: border-color 0.15s; }
+  .stat-card:hover { border-color: var(--accent); }
+  .stat-card.active-stat { border-color: var(--accent); background: rgba(79,142,247,0.07); }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+  .stat-value { font-size: 24px; font-weight: 700; font-family: var(--mono); }
+  .stat-value.blue { color: var(--accent); }
+  .stat-value.green { color: var(--green); }
+  .stat-value.yellow { color: var(--yellow); }
+  .stat-value.red { color: var(--red); }
+  .stat-value.grey { color: var(--muted); }
+
+  /* LAYOUT */
+  .main { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 136px); }
+
+  /* SIDEBAR */
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-toolbar { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; }
+  .search-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: 13px; font-family: 'Inter', sans-serif; outline: none; }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+  .btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity 0.15s; font-family: 'Inter', sans-serif; }
+  .btn:hover { opacity: 0.85; }
+  .btn-ghost { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: var(--red); }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+  .btn-success { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); color: var(--green); }
+  .btn-success:hover { background: rgba(34,197,94,0.25); }
+
+  .ticket-list { overflow-y: auto; flex: 1; }
+  .ticket-item { padding: 13px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+  .ticket-item:hover { background: var(--surface2); }
+  .ticket-item.active { background: var(--surface2); border-left: 3px solid var(--accent); padding-left: 11px; }
+  .ticket-item-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
+  .ticket-name { font-weight: 600; font-size: 14px; }
+  .ticket-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+  .badge-active { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-overdue { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge-due-today { background: rgba(245,158,11,0.15); color: var(--yellow); }
+  .badge-returned { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-cancelled { background: rgba(122,130,160,0.15); color: var(--muted); }
+
+  .reminder-mini { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: var(--green); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-red { background: var(--red); }
+  .dot-blue { background: var(--accent); }
+
+  /* DETAIL */
+  .detail-panel { overflow-y: auto; padding: 24px; background: var(--bg); }
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); gap: 12px; }
+  .empty-icon { font-size: 48px; }
+
+  .detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  .detail-name { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+  .detail-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .action-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+  .info-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .info-card-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  .info-card-value { font-size: 14px; font-weight: 600; }
+  .info-card-value.mono { font-family: var(--mono); font-size: 13px; }
+
+  .progress-bar-wrap { margin-bottom: 20px; }
+  .progress-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+  .progress-bar { height: 8px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 99px; transition: width 0.4s ease; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .progress-fill.danger { background: linear-gradient(90deg, var(--orange), var(--red)); }
+
+  .alert-banner { border-radius: 10px; padding: 11px 16px; margin-bottom: 12px; font-size: 13px; display: flex; gap: 10px; align-items: center; }
+  .alert-danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--red); }
+  .alert-warning { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: var(--yellow); }
+  .alert-info { background: rgba(79,142,247,0.1); border: 1px solid rgba(79,142,247,0.3); color: var(--accent); }
+
+  .section-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; margin-top: 4px; }
+
+  /* TIMELINE */
+  .timeline { position: relative; padding-left: 24px; margin-bottom: 24px; }
+  .timeline::before { content: ''; position: absolute; left: 7px; top: 8px; bottom: 0; width: 2px; background: var(--border); }
+  .tl-item { position: relative; margin-bottom: 12px; }
+  .tl-dot { position: absolute; left: -20px; top: 5px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--bg); }
+  .tl-dot.sent { background: var(--green); }
+  .tl-dot.pending { background: var(--border); border-color: var(--muted); }
+  .tl-dot.missed { background: var(--red); }
+  .tl-dot.due-today { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+  .tl-content { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; }
+  .tl-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+  .tl-label { font-size: 13px; font-weight: 600; }
+  .tl-date { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .tl-desc { font-size: 12px; color: var(--muted); }
+  .tl-action { margin-top: 8px; }
+  .send-btn { font-size: 11px; padding: 4px 12px; border-radius: 6px; }
+
+  /* NOTES */
+  .notes-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 20px; }
+  .notes-textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text); font-size: 13px; font-family: 'Inter', sans-serif; outline: none; resize: vertical; min-height: 80px; margin-top: 8px; }
+  .notes-textarea:focus { border-color: var(--accent); }
+  .notes-footer { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+  /* CANNED */
+  .canned-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 24px; position: relative; }
+  .canned-text { font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; }
+  .canned-footer { display: flex; justify-content: flex-end; margin-top: 10px; gap: 8px; }
+
+  /* MODAL */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 26px; width: 500px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 18px; }
+  .form-group { margin-bottom: 13px; }
+  .form-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block; }
+  .form-input, .form-select { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 14px; font-family: 'Inter', sans-serif; outline: none; }
+  .form-input:focus, .form-select:focus { border-color: var(--accent); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+
+  /* TOAST */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; font-size: 13px; z-index: 999; transform: translateY(80px); opacity: 0; transition: all 0.3s; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.warning { border-color: var(--yellow); color: var(--yellow); }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .empty-list { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">📦</div>
+    Asset Return Tracker
+  </div>
+  <div class="header-right">
+    <div class="notif-status" id="notifBtn" onclick="toggleNotifications()">🔔 Enable Daily Alerts</div>
+    <button class="btn btn-ghost" onclick="openModal()">+ New Request</button>
+  </div>
+</header>
+
+<div class="stats-bar" id="statsBar"></div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-toolbar">
+      <input class="search-input" type="text" placeholder="Search by name, LDAP, asset tag…" oninput="renderList()" id="searchBox">
+    </div>
+    <div class="ticket-list" id="ticketList"></div>
+  </div>
+  <div class="detail-panel" id="detailPanel">
+    <div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <div style="font-weight:600">Select a request to view details</div>
+      <div style="font-size:13px;color:var(--muted)">Or create a new one with the button above</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title">➕ New Return Request</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Employee Name *</label>
+        <input class="form-input" id="f-name" placeholder="e.g. Sireesha">
+      </div>
+      <div class="form-group">
+        <label class="form-label">User LDAP *</label>
+        <input class="form-input" id="f-ldap" placeholder="e.g. sireesha">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Asset Tag *</label>
+        <input class="form-input" id="f-asset-tag" placeholder="e.g. ASSET-20481">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Device Type</label>
+        <input class="form-input" id="f-device" placeholder="e.g. MacBook Pro 14">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Stuff Locker Location</label>
+        <input class="form-input" id="f-location" placeholder="e.g. R-ANANTA-2-L">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Request Created Date *</label>
+        <input class="form-input" id="f-created" type="date">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">First Tech Response Date</label>
+      <input class="form-input" id="f-first" type="date">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-input" id="f-notes" rows="2" placeholder="Any initial notes…" style="resize:vertical"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="addTicket()">Create Request</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---- STORAGE ----
+let tickets = JSON.parse(localStorage.getItem('art_v2_tickets') || '[]');
+let selectedId = null;
+let notifEnabled = localStorage.getItem('art_notif') === 'true';
+
+// Pre-load Sireesha demo
+if (tickets.length === 0) {
+  tickets = [{
+    id: genId(),
+    name: 'Sireesha',
+    ldap: 'ASIREESHA',
+    assetTag: 'ASSET-20481',
+    device: 'Corporate Device',
+    location: 'R-ANANTA-2-L',
+    created: '2026-06-03',
+    firstResponse: '2026-06-05',
+    reminders: [
+      { date: '2026-06-05', by: 'Vishal G H', sent: true },
+      { date: '2026-06-12', by: 'Hridikh P', sent: true },
+      { date: '2026-06-16', by: 'Rajashekar', sent: true },
+    ],
+    status: 'active',
+    notes: 'No response received after 3 reminders.'
+  }];
+  save();
+}
+
+function genId() { return 'ART-' + Date.now(); }
+function save() { localStorage.setItem('art_v2_tickets', JSON.stringify(tickets)); }
+
+// ---- POLICY ----
+const REMINDER_EVERY = 3;   // business days
+const DEADLINE_DAYS  = 14;  // business days
+
+function addBizDays(dateStr, n) {
+  let d = new Date(dateStr + 'T00:00:00');
+  let added = 0;
+  while (added < n) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) added++;
+  }
+  return d.toISOString().split('T')[0];
+}
+
+function bizDaysBetween(from, to) {
+  let a = new Date(from + 'T00:00:00'), b = new Date(to + 'T00:00:00');
+  let count = 0, cur = new Date(a);
+  while (cur <= b) { if (cur.getDay() !== 0 && cur.getDay() !== 6) count++; cur.setDate(cur.getDate()+1); }
+  return count;
+}
+
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function getDeadline(t) { return addBizDays(t.firstResponse || t.created, DEADLINE_DAYS); }
+
+function getStatus(t) {
+  if (t.status === 'returned') return 'returned';
+  if (t.status === 'cancelled') return 'cancelled';
+  const dl = getDeadline(t), td = todayStr();
+  if (td > dl) return 'overdue';
+  if (td === dl) return 'due-today';
+  return 'active';
+}
+
+function getSchedule(t) {
+  const start = t.firstResponse || t.created;
+  const deadline = getDeadline(t);
+  const sentMap = {};
+  (t.reminders || []).forEach(r => sentMap[r.date] = r);
+
+  let reminders = [], cur = start, idx = 0;
+  while (true) {
+    const next = idx === 0 ? cur : addBizDays(cur, REMINDER_EVERY);
+    if (next > deadline) break;
+    reminders.push(sentMap[next] || { date: next, by: '', sent: false });
+    cur = next; idx++;
+    if (reminders.length > 25) break;
+  }
+  // Final deadline entry
+  const finalEntry = sentMap[deadline] || { date: deadline, by: '', sent: false, isFinal: true };
+  if (!reminders.find(r => r.date === deadline)) reminders.push(finalEntry);
+  else reminders[reminders.length - 1].isFinal = true;
+  return reminders;
+}
+
+function getProgress(t) {
+  const start = t.firstResponse || t.created;
+  const elapsed = bizDaysBetween(start, todayStr());
+  return Math.min(100, Math.round((elapsed / DEADLINE_DAYS) * 100));
+}
+
+// ---- STATS ----
+let activeFilter = 'all';
+
+function renderStats() {
+  const counts = { all: tickets.length, active: 0, 'due-today': 0, overdue: 0, returned: 0, cancelled: 0 };
+  tickets.forEach(t => { const s = getStatus(t); if (counts[s] !== undefined) counts[s]++; });
+
+  const items = [
+    { key: 'all', label: 'Total', val: counts.all, cls: 'blue' },
+    { key: 'active', label: 'Active', val: counts.active, cls: 'blue' },
+    { key: 'due-today', label: 'Due Today', val: counts['due-today'], cls: 'yellow' },
+    { key: 'overdue', label: 'Overdue', val: counts.overdue, cls: 'red' },
+    { key: 'returned', label: 'Returned', val: counts.returned, cls: 'green' },
+  ];
+
+  document.getElementById('statsBar').innerHTML = items.map(i => `
+    <div class="stat-card ${activeFilter === i.key ? 'active-stat' : ''}" onclick="setFilter('${i.key}')">
+      <div class="stat-label">${i.label}</div>
+      <div class="stat-value ${i.cls}">${i.val}</div>
+    </div>
+  `).join('');
+}
+
+function setFilter(f) {
+  activeFilter = f;
+  renderStats();
+  renderList();
+}
+
+// ---- LIST ----
+function renderList() {
+  const q = (document.getElementById('searchBox').value || '').toLowerCase();
+  const list = tickets.filter(t => {
+    if (activeFilter !== 'all' && getStatus(t) !== activeFilter) return false;
+    if (q && !t.name.toLowerCase().includes(q) && !(t.ldap||'').toLowerCase().includes(q) && !(t.assetTag||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const badgeMap = {
+    active: ['badge-active','Active'],
+    overdue: ['badge-overdue','Overdue'],
+    'due-today': ['badge-due-today','Due Today'],
+    returned: ['badge-returned','Returned'],
+    cancelled: ['badge-cancelled','Cancelled']
+  };
+
+  const container = document.getElementById('ticketList');
+  if (!list.length) { container.innerHTML = '<div class="empty-list">No requests found</div>'; return; }
+
+  container.innerHTML = list.map(t => {
+    const st = getStatus(t);
+    const deadline = getDeadline(t);
+    const schedule = getSchedule(t);
+    const sentCount = schedule.filter(r => r.sent).length;
+    const [bCls, bLbl] = badgeMap[st] || ['badge-active','Active'];
+    const dotCls = st === 'overdue' ? 'dot-red' : st === 'due-today' ? 'dot-yellow' : 'dot-blue';
+    return `<div class="ticket-item ${selectedId === t.id ? 'active' : ''}" onclick="selectTicket('${t.id}')">
+      <div class="ticket-item-top">
+        <div>
+          <div class="ticket-name">${t.name} <span style="color:var(--muted);font-weight:400;font-size:12px">${t.ldap || ''}</span></div>
+          <div class="ticket-meta">${t.assetTag || '—'} · ${t.device || 'Device'}</div>
+        </div>
+        <span class="badge ${bCls}">${bLbl}</span>
+      </div>
+      <div class="reminder-mini">
+        <div class="dot ${dotCls}"></div>
+        <span style="font-size:11px;color:var(--muted)">Deadline: ${fmtDate(deadline)} · ${sentCount}/${schedule.length} sent</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---- DETAIL ----
+function selectTicket(id) {
+  selectedId = id;
+  renderList();
+  renderDetail();
+}
+
+function renderDetail() {
+  const t = tickets.find(x => x.id === selectedId);
+  if (!t) return;
+  const st = getStatus(t);
+  const deadline = getDeadline(t);
+  const progress = getProgress(t);
+  const schedule = getSchedule(t);
+  const elapsed = bizDaysBetween(t.firstResponse || t.created, todayStr());
+  const nextPending = schedule.find(r => !r.sent && r.date >= todayStr());
+  const missed = schedule.filter(r => !r.sent && r.date < todayStr());
+
+  // Alerts
+  let alerts = '';
+  if (st === 'overdue') alerts += `<div class="alert-banner alert-danger">⛔ OVERDUE — Past ${DEADLINE_DAYS} business day window. Cancel this request immediately.</div>`;
+  else if (st === 'due-today') alerts += `<div class="alert-banner alert-warning">⏰ Final deadline is TODAY. Cancel if no response received by end of day.</div>`;
+  if (missed.length > 0 && st === 'active') alerts += `<div class="alert-banner alert-warning">⚠️ ${missed.length} reminder(s) were missed. Please send them now.</div>`;
+  if (nextPending && st === 'active' && nextPending.date === todayStr()) alerts += `<div class="alert-banner alert-info">📅 Reminder due TODAY — send it now!</div>`;
+  else if (nextPending && st === 'active') alerts += `<div class="alert-banner alert-info">📅 Next reminder: <strong style="margin-left:4px">${fmtDate(nextPending.date)}</strong></div>`;
+
+  const cannedMsg = buildCanned(t, st);
+
+  document.getElementById('detailPanel').innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="detail-name">${t.name} <span style="color:var(--muted);font-size:16px;font-weight:400">(${t.ldap || '—'})</span></div>
+        <div class="detail-sub">${t.assetTag || '—'} · ${t.device || 'Device'} · ${t.location || '—'}</div>
+      </div>
+      <div class="action-btns">
+        ${st !== 'returned' && st !== 'cancelled' ? `<button class="btn btn-success" style="font-size:12px;padding:7px 12px" onclick="markStatus('${t.id}','returned')">✅ Mark Returned</button>` : ''}
+        ${st !== 'cancelled' && st !== 'returned' ? `<button class="btn btn-danger" style="font-size:12px;padding:7px 12px" onclick="markStatus('${t.id}','cancelled')">✖ Cancel Request</button>` : ''}
+        ${st === 'returned' || st === 'cancelled' ? `<span class="badge ${st==='returned'?'badge-returned':'badge-cancelled'}" style="padding:6px 14px;font-size:12px">${st==='returned'?'✅ Returned':'✖ Cancelled'}</span>` : ''}
+      </div>
+    </div>
+
+    ${alerts}
+
+    <div class="detail-grid">
+      <div class="info-card">
+        <div class="info-card-label">Request Created</div>
+        <div class="info-card-value">${fmtDate(t.created)}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-label">First Tech Response</div>
+        <div class="info-card-value">${fmtDate(t.firstResponse)}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-label">Policy Deadline</div>
+        <div class="info-card-value" style="color:${st==='overdue'?'var(--red)':st==='due-today'?'var(--yellow)':'var(--text)'}">${fmtDate(deadline)}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-label">Business Days Used</div>
+        <div class="info-card-value mono">${elapsed} / ${DEADLINE_DAYS}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-label">Reminders Sent</div>
+        <div class="info-card-value mono">${schedule.filter(r=>r.sent).length} / ${schedule.length}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-label">Locker Location</div>
+        <div class="info-card-value">${t.location || '—'}</div>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-header">
+        <span style="font-size:12px;color:var(--muted)">Return Window (${DEADLINE_DAYS} business days)</span>
+        <span style="font-size:12px;font-family:var(--mono);color:${progress>85?'var(--red)':'var(--accent)'}">${progress}% used</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill ${progress>85?'danger':''}" style="width:${progress}%"></div></div>
+    </div>
+
+    <div class="section-title">📅 Reminder Schedule</div>
+    <div class="timeline">
+      ${schedule.map((r, i) => {
+        const isToday = r.date === todayStr();
+        const isPast = r.date < todayStr();
+        let dotCls = r.sent ? 'sent' : isPast ? 'missed' : isToday ? 'due-today' : 'pending';
+        let label = r.isFinal ? '🔴 Final Deadline' : `Reminder #${i+1}`;
+        let desc = r.sent ? `✓ Sent by ${r.by||'Tech'}` : isPast ? '⚠ Missed — send now' : isToday ? '⏰ Send today!' : `Scheduled`;
+        return `<div class="tl-item">
+          <div class="tl-dot ${dotCls}"></div>
+          <div class="tl-content" style="${r.isFinal?'border-color:rgba(239,68,68,0.3)':''}">
+            <div class="tl-top">
+              <span class="tl-label">${label}</span>
+              <span class="tl-date">${fmtDate(r.date)}</span>
+            </div>
+            <div class="tl-desc">${desc}</div>
+            ${!r.sent && (isToday || isPast) && st !== 'returned' && st !== 'cancelled' ?
+              `<div class="tl-action"><button class="btn send-btn" onclick="markSent('${t.id}','${r.date}')">Mark as Sent</button></div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    ${st !== 'returned' && st !== 'cancelled' ? `
+    <div class="section-title">📝 Canned Response</div>
+    <div class="canned-wrap">
+      <div class="canned-text" id="cannedText">${cannedMsg}</div>
+      <div class="canned-footer">
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px" onclick="copyCanned()">📋 Copy Message</button>
+      </div>
+    </div>` : ''}
+
+    <div class="section-title">🗒 Notes / Employee Response</div>
+    <div class="notes-box">
+      <textarea class="notes-textarea" id="notesArea" placeholder="Log any responses, calls, or updates here…">${t.notes || ''}</textarea>
+      <div class="notes-footer">
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px" onclick="saveNotes('${t.id}')">Save Notes</button>
+      </div>
+    </div>
+  `;
+}
+
+function buildCanned(t, st) {
+  const deadline = getDeadline(t);
+  if (st === 'overdue') {
+    return `Hello ${t.name},\n\nYour device return request for asset ${t.assetTag || 'your device'} has exceeded our ${DEADLINE_DAYS} business day policy window.\n\nThis request is now being cancelled. Your device will lose corporate access and your cost center will be charged accordingly.\n\nIf you have already returned the device, please contact us immediately with proof.\n\nRegards,\nIT Asset Team`;
+  }
+  if (st === 'due-today') {
+    return `Hello ${t.name},\n\nThis is a final reminder for your device return request (Asset: ${t.assetTag || '—'}).\n\nToday is the last day of our ${DEADLINE_DAYS} business day return window (${fmtDate(deadline)}). If we do not receive your device by end of day, this request will be cancelled and your cost center will be charged.\n\nPlease return your device to the Stuff Locker at ${t.location || 'your nearest location'} immediately.\n\nRegards,\nIT Asset Team`;
+  }
+  return `Hello ${t.name},\n\nWe're following up on your recent device return request (Asset: ${t.assetTag || '—'}). We haven't heard back from you in a while and wanted to check in.\n\nPlease take action within the next ${REMINDER_EVERY} business days. If we don't hear back, this request will be closed due to inactivity.\n\nYou can return your device to the Stuff Locker at ${t.location || 'your nearest location'}. The return window closes on ${fmtDate(deadline)} — after which the device will lose corporate access and your cost center will be charged.\n\nLet us know if you have any questions or need assistance.\n\nKind regards,\nIT Asset Team`;
+}
+
+function copyCanned() {
+  const txt = document.getElementById('cannedText').innerText;
+  navigator.clipboard.writeText(txt).then(() => showToast('✅ Message copied!', 'success'));
+}
+
+function markSent(ticketId, date) {
+  const t = tickets.find(x => x.id === ticketId);
+  if (!t) return;
+  const schedule = getSchedule(t);
+  t.reminders = schedule.map(r => r.date === date ? {...r, sent: true, by: 'You'} : r);
+  save();
+  showToast('✅ Reminder marked as sent', 'success');
+  renderDetail(); renderList();
+}
+
+function markStatus(ticketId, status) {
+  const t = tickets.find(x => x.id === ticketId);
+  if (!t) return;
+  t.status = status;
+  save();
+  showToast(status === 'returned' ? '✅ Marked as returned!' : '✖ Request cancelled', status === 'returned' ? 'success' : 'warning');
+  renderDetail(); renderList(); renderStats();
+}
+
+function saveNotes(ticketId) {
+  const t = tickets.find(x => x.id === ticketId);
+  if (!t) return;
+  t.notes = document.getElementById('notesArea').value;
+  save();
+  showToast('✅ Notes saved', 'success');
+}
+
+// ---- MODAL ----
+function openModal() {
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('f-created').value = todayStr();
+  document.getElementById('f-first').value = todayStr();
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function addTicket() {
+  const name = document.getElementById('f-name').value.trim();
+  const ldap = document.getElementById('f-ldap').value.trim();
+  const assetTag = document.getElementById('f-asset-tag').value.trim();
+  const device = document.getElementById('f-device').value.trim();
+  const location = document.getElementById('f-location').value.trim();
+  const created = document.getElementById('f-created').value;
+  const firstResponse = document.getElementById('f-first').value;
+  const notes = document.getElementById('f-notes').value.trim();
+
+  if (!name || !created) { showToast('⚠ Name and Created Date are required', 'warning'); return; }
+
+  const t = { id: genId(), name, ldap, assetTag, device, location, created, firstResponse: firstResponse || created, reminders: [], status: 'active', notes };
+  tickets.unshift(t);
+  save();
+  closeModal();
+  // Reset form
+  ['f-name','f-ldap','f-asset-tag','f-device','f-location','f-notes'].forEach(id => document.getElementById(id).value = '');
+  renderList(); renderStats();
+  selectTicket(t.id);
+  showToast('✅ Request created!', 'success');
+}
+
+// ---- NOTIFICATIONS ----
+function toggleNotifications() {
+  if (!('Notification' in window)) { showToast('⚠ Browser notifications not supported', 'warning'); return; }
+  if (notifEnabled) {
+    notifEnabled = false;
+    localStorage.setItem('art_notif', 'false');
+    updateNotifBtn();
+    showToast('🔕 Daily alerts disabled', 'warning');
+  } else {
+    Notification.requestPermission().then(perm => {
+      if (perm === 'granted') {
+        notifEnabled = true;
+        localStorage.setItem('art_notif', 'true');
+        updateNotifBtn();
+        showToast('🔔 Daily alerts enabled! You\'ll be notified at 9:00 AM', 'success');
+        scheduleNotification();
+      } else {
+        showToast('⚠ Permission denied. Please allow notifications in browser settings.', 'warning');
+      }
+    });
+  }
+}
+
+function updateNotifBtn() {
+  const btn = document.getElementById('notifBtn');
+  if (notifEnabled) {
+    btn.textContent = '🔔 Alerts ON (9:00 AM)';
+    btn.classList.add('enabled');
+  } else {
+    btn.textContent = '🔔 Enable Daily Alerts';
+    btn.classList.remove('enabled');
+  }
+}
+
+function getDailyAlertMessage() {
+  const overdue = tickets.filter(t => getStatus(t) === 'overdue');
+  const dueToday = tickets.filter(t => getStatus(t) === 'due-today');
+  const active = tickets.filter(t => getStatus(t) === 'active');
+
+  // Find active tickets with reminder due today
+  const reminderDueToday = active.filter(t => {
+    const schedule = getSchedule(t);
+    return schedule.some(r => !r.sent && r.date === todayStr());
+  });
+
+  let parts = [];
+  if (overdue.length) parts.push(`${overdue.length} OVERDUE request(s) need cancellation`);
+  if (dueToday.length) parts.push(`${dueToday.length} request(s) deadline is TODAY`);
+  if (reminderDueToday.length) parts.push(`${reminderDueToday.length} reminder(s) due today`);
+
+  if (!parts.length) return null;
+  return parts.join(' · ');
+}
+
+function fireNotification() {
+  if (!notifEnabled || Notification.permission !== 'granted') return;
+  const msg = getDailyAlertMessage();
+  if (!msg) return;
+  new Notification('📦 Asset Return Tracker — Daily Alert', {
+    body: msg,
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">📦</text></svg>'
+  });
+}
+
+function scheduleNotification() {
+  // Check every minute if it's 9:00 AM
+  setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 9 && now.getMinutes() === 0) {
+      fireNotification();
+    }
+  }, 60000);
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ---- INIT ----
+updateNotifBtn();
+if (notifEnabled && Notification.permission === 'granted') scheduleNotification();
+renderStats();
+renderList();
+if (tickets.length > 0) selectTicket(tickets[0].id);
+setInterval(() => { renderStats(); renderList(); if (selectedId) renderDetail(); }, 60000);
+</script>
+</body>
+</html>
