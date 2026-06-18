@@ -182,6 +182,7 @@
   </div>
   <div class="header-right">
     <div class="notif-status" id="notifBtn" onclick="toggleNotifications()">🔔 Enable Daily Alerts</div>
+    <button class="btn btn-ghost" onclick="testNotification()" style="font-size:12px">🧪 Test Alert</button>
     <button class="btn btn-ghost" onclick="openModal()">+ New Request</button>
   </div>
 </header>
@@ -653,41 +654,85 @@ function updateNotifBtn() {
   }
 }
 
-function getDailyAlertMessage() {
-  const overdue = tickets.filter(t => getStatus(t) === 'overdue');
-  const dueToday = tickets.filter(t => getStatus(t) === 'due-today');
-  const active = tickets.filter(t => getStatus(t) === 'active');
+function getAlertDetails() {
+  const result = { overdue: [], dueToday: [], reminderDue: [], missed: [] };
 
-  // Find active tickets with reminder due today
-  const reminderDueToday = active.filter(t => {
-    const schedule = getSchedule(t);
-    return schedule.some(r => !r.sent && r.date === todayStr());
+  tickets.forEach(t => {
+    const st = getStatus(t);
+    if (st === 'overdue') result.overdue.push(t);
+    else if (st === 'due-today') result.dueToday.push(t);
+    else if (st === 'active') {
+      const schedule = getSchedule(t);
+      const hasDueToday = schedule.some(r => !r.sent && r.date === todayStr());
+      const hasMissed = schedule.some(r => !r.sent && r.date < todayStr());
+      if (hasDueToday) result.reminderDue.push(t);
+      else if (hasMissed) result.missed.push(t);
+    }
   });
 
-  let parts = [];
-  if (overdue.length) parts.push(`${overdue.length} OVERDUE request(s) need cancellation`);
-  if (dueToday.length) parts.push(`${dueToday.length} request(s) deadline is TODAY`);
-  if (reminderDueToday.length) parts.push(`${reminderDueToday.length} reminder(s) due today`);
-
-  if (!parts.length) return null;
-  return parts.join(' · ');
+  return result;
 }
 
-function fireNotification() {
+function buildNotifBody(details) {
+  let lines = [];
+
+  if (details.overdue.length) {
+    lines.push(`⛔ OVERDUE — Cancel now:`);
+    details.overdue.forEach(t => lines.push(`  • ${t.name} (${t.ldap || t.assetTag || '—'})`));
+  }
+  if (details.dueToday.length) {
+    lines.push(`🔴 Deadline TODAY — Cancel if no response:`);
+    details.dueToday.forEach(t => lines.push(`  • ${t.name} (${t.ldap || t.assetTag || '—'})`));
+  }
+  if (details.reminderDue.length) {
+    lines.push(`📅 Send reminder today:`);
+    details.reminderDue.forEach(t => lines.push(`  • ${t.name} (${t.ldap || t.assetTag || '—'})`));
+  }
+  if (details.missed.length) {
+    lines.push(`⚠ Missed reminders — send now:`);
+    details.missed.forEach(t => lines.push(`  • ${t.name} (${t.ldap || t.assetTag || '—'})`));
+  }
+
+  return lines.length ? lines.join('\n') : null;
+}
+
+function fireNotification(isTest = false) {
   if (!notifEnabled || Notification.permission !== 'granted') return;
-  const msg = getDailyAlertMessage();
-  if (!msg) return;
-  new Notification('📦 Asset Return Tracker — Daily Alert', {
-    body: msg,
-    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">📦</text></svg>'
-  });
+  const details = getAlertDetails();
+  const body = buildNotifBody(details);
+
+  if (!body && !isTest) return; // Silent day — no popup
+
+  const totalActions = details.overdue.length + details.dueToday.length + details.reminderDue.length + details.missed.length;
+
+  new Notification(
+    isTest
+      ? '📦 Asset Return Tracker — Test Notification'
+      : `📦 Asset Return Tracker — ${totalActions} action(s) needed today`,
+    {
+      body: body || '✅ No actions needed today — all clear!',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">📦</text></svg>',
+      requireInteraction: true  // stays until user dismisses
+    }
+  );
+}
+
+function testNotification() {
+  if (!notifEnabled || Notification.permission !== 'granted') {
+    showToast('⚠ Please enable alerts first', 'warning');
+    return;
+  }
+  fireNotification(true);
+  showToast('🔔 Test notification sent!', 'success');
 }
 
 function scheduleNotification() {
-  // Check every minute if it's 9:00 AM
+  let firedToday = null;
   setInterval(() => {
     const now = new Date();
-    if (now.getHours() === 9 && now.getMinutes() === 0) {
+    const dateKey = now.toISOString().split('T')[0];
+    if (now.getHours() === 9 && now.getMinutes() === 0 && firedToday !== dateKey) {
+      firedToday = dateKey; // prevent duplicate firing in same minute
       fireNotification();
     }
   }, 60000);
