@@ -182,7 +182,8 @@
   </div>
   <div class="header-right">
     <div class="notif-status" id="notifBtn" onclick="toggleNotifications()">🔔 Enable Daily Alerts</div>
-    <button class="btn btn-ghost" onclick="testNotification()" style="font-size:12px">🧪 Test Alert</button>
+    <button class="btn btn-ghost" onclick="testNotification()" style="font-size:12px">🧪 Test Today</button>
+    <button class="btn btn-ghost" onclick="testTomorrowNotification()" style="font-size:12px">📅 Test Tomorrow</button>
     <button class="btn btn-ghost" onclick="openModal()">+ New Request</button>
   </div>
 </header>
@@ -316,7 +317,16 @@ function fmtDate(d) {
   return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
 }
 
-function getDeadline(t) { return addBizDays(t.firstResponse || t.created, DEADLINE_DAYS); }
+function getStartDate(t) {
+  // Always start counting from the NEXT business day after first tech response
+  const base = t.firstResponse || t.created;
+  return addBizDays(base, 1);
+}
+
+function getDeadline(t) {
+  // Deadline = 14 business days from the day AFTER first tech response
+  return addBizDays(getStartDate(t), DEADLINE_DAYS);
+}
 
 function getStatus(t) {
   if (t.status === 'returned') return 'returned';
@@ -328,30 +338,41 @@ function getStatus(t) {
 }
 
 function getSchedule(t) {
-  const start = t.firstResponse || t.created;
+  const firstReminderDate = t.firstResponse || t.created; // First reminder = same day as first response
+  const countingStart = getStartDate(t); // Deadline counting starts from NEXT business day
   const deadline = getDeadline(t);
   const sentMap = {};
   (t.reminders || []).forEach(r => sentMap[r.date] = r);
 
-  let reminders = [], cur = start, idx = 0;
+  let reminders = [];
+
+  // Reminder #1 — on the same day as first tech response
+  reminders.push(sentMap[firstReminderDate] || { date: firstReminderDate, by: '', sent: false });
+
+  // Subsequent reminders — every 3 business days from counting start
+  let cur = countingStart;
   while (true) {
-    const next = idx === 0 ? cur : addBizDays(cur, REMINDER_EVERY);
+    const next = addBizDays(cur, REMINDER_EVERY);
     if (next > deadline) break;
-    reminders.push(sentMap[next] || { date: next, by: '', sent: false });
-    cur = next; idx++;
+    if (next !== firstReminderDate) {
+      reminders.push(sentMap[next] || { date: next, by: '', sent: false });
+    }
+    cur = next;
     if (reminders.length > 25) break;
   }
+
   // Final deadline entry
   const finalEntry = sentMap[deadline] || { date: deadline, by: '', sent: false, isFinal: true };
   if (!reminders.find(r => r.date === deadline)) reminders.push(finalEntry);
   else reminders[reminders.length - 1].isFinal = true;
+
   return reminders;
 }
 
 function getProgress(t) {
-  const start = t.firstResponse || t.created;
+  const start = getStartDate(t);
   const elapsed = bizDaysBetween(start, todayStr());
-  return Math.min(100, Math.round((elapsed / DEADLINE_DAYS) * 100));
+  return Math.min(100, Math.round((Math.min(elapsed, DEADLINE_DAYS) / DEADLINE_DAYS) * 100));
 }
 
 // ---- STATS ----
@@ -440,7 +461,9 @@ function renderDetail() {
   const deadline = getDeadline(t);
   const progress = getProgress(t);
   const schedule = getSchedule(t);
-  const elapsed = bizDaysBetween(t.firstResponse || t.created, todayStr());
+  const start = getStartDate(t);
+  const elapsedRaw = bizDaysBetween(start, todayStr());
+  const elapsed = Math.min(elapsedRaw, DEADLINE_DAYS);
   const nextPending = schedule.find(r => !r.sent && r.date >= todayStr());
   const missed = schedule.filter(r => !r.sent && r.date < todayStr());
 
@@ -484,7 +507,7 @@ function renderDetail() {
       </div>
       <div class="info-card">
         <div class="info-card-label">Business Days Used</div>
-        <div class="info-card-value mono">${elapsed} / ${DEADLINE_DAYS}</div>
+        <div class="info-card-value mono" style="color:${elapsedRaw > DEADLINE_DAYS ? 'var(--red)' : 'var(--text)'}">${elapsedRaw} / ${DEADLINE_DAYS} ${elapsedRaw > DEADLINE_DAYS ? '⚠ Overdue' : ''}</div>
       </div>
       <div class="info-card">
         <div class="info-card-label">Reminders Sent</div>
@@ -654,23 +677,56 @@ function updateNotifBtn() {
   }
 }
 
-function getAlertDetails() {
+function tomorrowStr() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
+}
+
+function getAlertDetails(forDate) {
+  const checkDate = forDate || todayStr();
   const result = { overdue: [], dueToday: [], reminderDue: [], missed: [] };
 
   tickets.forEach(t => {
-    const st = getStatus(t);
+    if (t.status === 'returned' || t.status === 'cancelled') return;
+    const deadline = getDeadline(t);
+    let st;
+    if (checkDate > deadline) st = 'overdue';
+    else if (checkDate === deadline) st = 'due-today';
+    else st = 'active';
+
     if (st === 'overdue') result.overdue.push(t);
     else if (st === 'due-today') result.dueToday.push(t);
-    else if (st === 'active') {
+    else {
       const schedule = getSchedule(t);
-      const hasDueToday = schedule.some(r => !r.sent && r.date === todayStr());
-      const hasMissed = schedule.some(r => !r.sent && r.date < todayStr());
-      if (hasDueToday) result.reminderDue.push(t);
+      const hasDueOnDate = schedule.some(r => !r.sent && r.date === checkDate);
+      const hasMissed = schedule.some(r => !r.sent && r.date < checkDate);
+      if (hasDueOnDate) result.reminderDue.push(t);
       else if (hasMissed) result.missed.push(t);
     }
   });
 
   return result;
+}
+
+function testTomorrowNotification() {
+  if (!notifEnabled || Notification.permission !== 'granted') {
+    showToast('\u26a0 Please enable alerts first', 'warning');
+    return;
+  }
+  const tomorrow = tomorrowStr();
+  const details = getAlertDetails(tomorrow);
+  const body = buildNotifBody(details);
+  const totalActions = details.overdue.length + details.dueToday.length + details.reminderDue.length + details.missed.length;
+  new Notification(
+    '\ud83d\udce6 Preview: Tomorrow\'s Alert (' + tomorrow + ')',
+    {
+      body: body || '\u2705 No actions needed tomorrow — all clear!',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">\ud83d\udce6</text></svg>',
+      requireInteraction: true
+    }
+  );
+  showToast(body ? ('\ud83d\udd14 Tomorrow: ' + totalActions + ' action(s) needed') : '\u2705 Tomorrow looks clear!', body ? 'warning' : 'success');
 }
 
 function buildNotifBody(details) {
